@@ -1,0 +1,7 @@
+{
+  "watch": ["src"],
+  "ext": "ts, js, json",
+  "execMap": {
+    "ts": "cross-env REACT_APP_ENV=dev MOCK=none UMI_ENV=dev node dev"
+  }
+}
