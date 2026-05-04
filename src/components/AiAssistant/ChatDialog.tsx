@@ -1,14 +1,4 @@
-import {
-  Modal,
-  Button,
-  FloatButton,
-  Input,
-  Upload,
-  Card,
-  Typography,
-  message,
-  Dropdown,
-} from 'antd';
+import { Modal, Button, FloatButton, Input, Upload, Card, message, Dropdown } from 'antd';
 import { useState, useEffect, useRef, KeyboardEvent } from 'react';
 import {
   MessageOutlined,
@@ -25,17 +15,15 @@ import type { UploadFile, UploadProps } from 'antd';
 import { askQuestion, uploadFileForRAG, transcribeAudio } from '@/services/ant-design-pro/rag/api';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
-import rehypeSanitize from 'rehype-sanitize';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { tomorrow } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { defaultSchema } from 'hast-util-sanitize';
 import 'katex/dist/katex.min.css';
 
 const { TextArea } = Input;
-const { Paragraph } = Typography;
 
+/* eslint-disable no-var, @typescript-eslint/no-redeclare, @typescript-eslint/no-unused-vars -- Web Speech API typings */
 // Type declarations for Web Speech API
 declare global {
   interface Window {
@@ -91,15 +79,18 @@ declare var webkitSpeechRecognition: {
   prototype: SpeechRecognition;
   new (): SpeechRecognition;
 };
+/* eslint-enable no-var, @typescript-eslint/no-redeclare, @typescript-eslint/no-unused-vars */
 
 // Message Renderer Component
-const MessageRenderer: React.FC<{ content: string; contentType?: string; media?: any }> = ({
+const MessageRenderer: React.FC<{ content?: string; contentType?: string; media?: any }> = ({
   content,
   contentType = 'text',
   media,
 }) => {
+  const text = String(content ?? '');
+
   // Function to detect if content contains markdown
-  const hasMarkdown = (text: string) => {
+  const hasMarkdown = (s: string) => {
     const markdownPatterns = [
       /^#{1,6}\s/, // Headers
       /\*\*.*\*\*/, // Bold
@@ -113,17 +104,17 @@ const MessageRenderer: React.FC<{ content: string; contentType?: string; media?:
       /^- /, // Lists
       /^\d+\. /, // Numbered lists
     ];
-    return markdownPatterns.some((pattern) => pattern.test(text));
+    return markdownPatterns.some((pattern) => pattern.test(s));
   };
 
   // Function to detect media URLs
-  const detectMedia = (text: string) => {
+  const detectMedia = (raw: string) => {
     const imageExtensions = /\.(jpg|jpeg|png|gif|webp|svg)$/i;
     const videoExtensions = /\.(mp4|webm|ogg|mov|avi|mkv)$/i;
 
     // Look for URLs in markdown syntax: ![alt](url) or [text](url)
     const markdownUrlPattern = /\[([^\]]*)\]\(([^)]+)\)/g;
-    const matches = [...text.matchAll(markdownUrlPattern)];
+    const matches = [...raw.matchAll(markdownUrlPattern)];
 
     for (const match of matches) {
       const [, alt, url] = match;
@@ -137,7 +128,7 @@ const MessageRenderer: React.FC<{ content: string; contentType?: string; media?:
 
     // Also check for plain URLs
     const urlPattern = /https?:\/\/[^\s]+/g;
-    const urls = text.match(urlPattern);
+    const urls = raw.match(urlPattern);
 
     if (urls) {
       for (const url of urls) {
@@ -154,12 +145,10 @@ const MessageRenderer: React.FC<{ content: string; contentType?: string; media?:
 
   // Determine content type
   const finalContentType =
-    contentType === 'text' && (hasMarkdown(content) || detectMedia(content))
-      ? 'markdown'
-      : contentType;
+    contentType === 'text' && (hasMarkdown(text) || detectMedia(text)) ? 'markdown' : contentType;
 
-  const detectedMedia = detectMedia(content);
-  console.log('Content:', content);
+  const detectedMedia = detectMedia(text);
+  console.log('Content:', text);
   console.log('Detected media:', detectedMedia);
 
   if (media || detectedMedia) {
@@ -226,13 +215,13 @@ const MessageRenderer: React.FC<{ content: string; contentType?: string; media?:
             )}
           </div>
         )}
-        {content && (
+        {text && (
           <div style={{ marginTop: 8 }}>
             <ReactMarkdown
               remarkPlugins={[remarkMath]}
               rehypePlugins={[rehypeKatex, rehypeRaw]}
               components={{
-                code({ node, className, children, ...props }: any) {
+                code({ className, children, ...props }: any) {
                   const match = /language-(\w+)/.exec(className || '');
                   const isInline = !match;
                   return !isInline ? (
@@ -273,7 +262,6 @@ const MessageRenderer: React.FC<{ content: string; contentType?: string; media?:
                               container.appendChild(fallback);
                             }
                           }}
-                          onLoad={() => console.log('Video loaded successfully:', src)}
                         >
                           <source src={src} type="video/mp4" />
                           <source src={src} type="video/webm" />
@@ -333,7 +321,7 @@ const MessageRenderer: React.FC<{ content: string; contentType?: string; media?:
                 ),
               }}
             >
-              {content}
+              {text}
             </ReactMarkdown>
           </div>
         )}
@@ -347,7 +335,7 @@ const MessageRenderer: React.FC<{ content: string; contentType?: string; media?:
         remarkPlugins={[remarkMath]}
         rehypePlugins={[rehypeKatex, rehypeRaw]}
         components={{
-          code({ node, className, children, ...props }: any) {
+          code({ className, children, ...props }: any) {
             const match = /language-(\w+)/.exec(className || '');
             const isInline = !match;
             return !isInline ? (
@@ -390,19 +378,19 @@ const MessageRenderer: React.FC<{ content: string; contentType?: string; media?:
           ),
         }}
       >
-        {content}
+        {text}
       </ReactMarkdown>
     );
   }
 
   // Default text rendering
-  return <span style={{ whiteSpace: 'pre-wrap' }}>{content}</span>;
+  return <span style={{ whiteSpace: 'pre-wrap' }}>{text}</span>;
 };
 
 // Types
 interface Message {
   role: 'user' | 'assistant';
-  content: string;
+  content?: string;
   contentType?: 'text' | 'markdown' | 'media';
   media?: {
     type: 'image' | 'video';
@@ -512,6 +500,9 @@ const ChatMessages: React.FC<{
 
     // Extract plain text from markdown content
     const plainText = text
+      .replace(/<think>[\s\S]*?<\/think>/gi, '') // Remove think blocks
+      .replace(/\\think\s*\{[\s\S]*?\}/g, '') // Remove \think{...}
+      .replace(/\\think\b.*/g, '') // Remove one-line \think ...
       .replace(/!\[.*?\]\(.*?\)/g, '') // Remove image markdown
       .replace(/\[.*?\]\(.*?\)/g, '') // Remove link markdown
       .replace(/`.*?`/g, '') // Remove inline code
@@ -600,7 +591,9 @@ const ChatMessages: React.FC<{
                   size="small"
                   icon={speakingMessageIndex === idx ? <StopOutlined /> : <SoundOutlined />}
                   onClick={() =>
-                    speakingMessageIndex === idx ? stopSpeaking() : speakMessage(msg.content, idx)
+                    speakingMessageIndex === idx
+                      ? stopSpeaking()
+                      : speakMessage(msg.content ?? '', idx)
                   }
                   style={{
                     fontSize: 14,
@@ -643,7 +636,7 @@ const ChatInput: React.FC<{
   const [isRecording, setIsRecording] = useState(false);
   const [recognition, setRecognition] = useState<SpeechRecognition | null>(null);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
-  const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
+  const mediaChunksRef = useRef<Blob[]>([]);
   const [loadingDots, setLoadingDots] = useState(0);
   const textAreaRef = useRef<any>(null);
 
@@ -783,12 +776,11 @@ const ChatInput: React.FC<{
             mimeType: mimeType,
           });
 
-          const chunks: Blob[] = [];
-          setAudioChunks(chunks);
+          mediaChunksRef.current = [];
 
           recorder.ondataavailable = (event) => {
             if (event.data.size > 0) {
-              chunks.push(event.data);
+              mediaChunksRef.current.push(event.data);
             }
           };
 
@@ -802,32 +794,44 @@ const ChatInput: React.FC<{
             // Stop all tracks
             stream.getTracks().forEach((track) => track.stop());
 
-            if (chunks.length > 0) {
-              const audioBlob = new Blob(chunks, { type: mimeType });
+            const parts = [...mediaChunksRef.current];
+            mediaChunksRef.current = [];
+            const baseType = mimeType.split(';')[0] || 'audio/webm';
+            const audioBlob =
+              parts.length > 0
+                ? new Blob(parts, { type: baseType })
+                : new Blob([], { type: baseType });
 
-              try {
-                // Show loading message
-                message.loading({
-                  content: 'Транскрибирую аудио...',
-                  key: 'transcribing',
+            if (audioBlob.size === 0) {
+              message.warning('Запись холи аст — ягон аудио не гирифта шуд');
+              return;
+            }
+
+            try {
+              message.loading({
+                content: 'Транскрибирую аудио...',
+                key: 'transcribing',
+              });
+
+              const response = await transcribeAudio(audioBlob);
+
+              message.destroy('transcribing');
+
+              const t = response.text?.trim();
+              if (t) {
+                setValue((prev) => {
+                  const next = prev + (prev ? ' ' : '') + t;
+                  requestAnimationFrame(() => textAreaRef.current?.focus?.());
+                  return next;
                 });
-
-                const response = await transcribeAudio(audioBlob);
-
-                // Hide loading message
-                message.destroy('transcribing');
-
-                if (response.text) {
-                  setValue((prev) => prev + (prev ? ' ' : '') + response.text);
-                  message.success('Аудио успешно транскрибировано');
-                } else {
-                  message.error('Не удалось транскрибировать аудио');
-                }
-              } catch (error) {
-                message.destroy('transcribing');
-                console.error('Error transcribing audio:', error);
-                message.error('Ошибка при транскрибировании аудио');
+                message.success('Аудио успешно транскрибировано');
+              } else {
+                message.error('Не удалось транскрибировать аудио');
               }
+            } catch (error) {
+              message.destroy('transcribing');
+              console.error('Error transcribing audio:', error);
+              message.error('Ошибка при транскрибировании аудио');
             }
           };
 
@@ -839,7 +843,7 @@ const ChatInput: React.FC<{
           };
 
           setMediaRecorder(recorder);
-          recorder.start();
+          recorder.start(250);
         } catch (error) {
           console.error('Error starting MediaRecorder:', error);
           message.error('Не удалось получить доступ к микрофону');
@@ -1018,8 +1022,10 @@ const ChatInput: React.FC<{
           <Dropdown
             menu={{
               items: languageOptions,
-              onClick: ({ key }) => handleLanguageChange(key as 'en-US' | 'ru-RU' | 'tj-TJ'),
+              selectable: true,
               selectedKeys: [currentLanguage],
+              onClick: ({ key }) =>
+                handleLanguageChange(String(key) as 'en-US' | 'ru-RU' | 'tj-TJ'),
             }}
             trigger={['click']}
             placement="topRight"
@@ -1096,13 +1102,53 @@ const ChatDialog: React.FC<ChatDialogProps> = ({
   const [loading, setLoading] = useState(false);
   const [currentLanguage, setCurrentLanguage] = useState<'en-US' | 'ru-RU' | 'tj-TJ'>('en-US');
   const [shouldFocusInput, setShouldFocusInput] = useState(false);
+  const replyLanguageRef = useRef(currentLanguage);
+  replyLanguageRef.current = currentLanguage;
+
+  const MAX_CONTEXT_CHARS = 1200;
+
+  const lastUploadedFilename = (): string | undefined => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const c = messages[i].content ?? '';
+      const m = c.match(/Uploaded file for context:\s*(.+)$/i);
+      if (m) return m[1].trim();
+    }
+    return undefined;
+  };
+
+  const buildContextualQuestion = (question: string): string => {
+    const recent = messages
+      .filter((m) => m.contentType !== 'video')
+      .slice(-4)
+      .map((m) => {
+        const role = m.role === 'user' ? 'User' : 'Assistant';
+        let ctx = String(m.content ?? '');
+        if (ctx.length > MAX_CONTEXT_CHARS) {
+          ctx = `${ctx.slice(0, MAX_CONTEXT_CHARS)}…`;
+        }
+        return `${role}: ${ctx}`;
+      })
+      .join('\n');
+    if (!recent.trim()) {
+      return question;
+    }
+    // Minimal delimiter — avoids English-only scaffolding biasing the model
+    return `${recent}\n---\n${question}`;
+  };
 
   // Default message sending function
-  const defaultSendMessage = async (userMessage: string, files: UploadFile[]): Promise<string> => {
+  const defaultSendMessage = async (userMessage: string, _files: UploadFile[]): Promise<string> => {
+    void _files;
     try {
-      // Call the real backend API
-      const response = await askQuestion(userMessage);
-      return response.answer;
+      // Retrieval uses short query (+ optional PDF name); LLM still sees chat context
+      const uploadName = lastUploadedFilename();
+      const retrievalQuery = [uploadName, userMessage.trim()].filter(Boolean).join(' ');
+      const response = await askQuestion({
+        question: buildContextualQuestion(userMessage),
+        retrievalQuery,
+        replyLanguage: replyLanguageRef.current,
+      });
+      return typeof response?.answer === 'string' ? response.answer : '';
     } catch (error: any) {
       console.error('Error calling API:', error);
       // Try to extract error message from API error response
@@ -1127,7 +1173,7 @@ const ChatDialog: React.FC<ChatDialogProps> = ({
           .map((file) => file.originFileObj as File);
 
         if (filesToUpload.length > 0) {
-          const response = await uploadFileForRAG(filesToUpload);
+          await uploadFileForRAG(filesToUpload);
 
           // Add individual messages for each uploaded file
           filesToUpload.forEach((file) => {
@@ -1149,7 +1195,10 @@ const ChatDialog: React.FC<ChatDialogProps> = ({
         const sendFunction = onSendMessage || defaultSendMessage;
         const response = await sendFunction(userMessage, files);
         // Add assistant response
-        setMessages((prev) => [...prev, { role: 'assistant', content: response }]);
+        setMessages((prev) => [
+          ...prev,
+          { role: 'assistant', content: typeof response === 'string' ? response : '' },
+        ]);
       }
     } catch (error) {
       setMessages((prev) => [

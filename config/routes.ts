@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @name umi route configuration
  * @description Only supports path, component, routes, redirect, wrappers, name, icon configuration
  * @param path  path only supports two placeholder configurations, the first is dynamic parameter :id form, the second is * wildcard, wildcard can only appear at the end of the route string.
@@ -38,13 +38,6 @@ export default [
     name: 'list',
     icon: 'orderedList',
     component: './List',
-  },
-  {
-    path: '/admin',
-    name: 'admin',
-    icon: 'crown',
-    component: './Admin',
-    access: 'canAdmin',
   },
   {
     path: '/',

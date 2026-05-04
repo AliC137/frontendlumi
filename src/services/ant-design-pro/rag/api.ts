@@ -49,15 +49,26 @@ export async function uploadFileForRAG(files: File | File[]) {
 //  */
 export async function transcribeAudio(audioBlob: Blob): Promise<{ text: string }> {
   const formData = new FormData();
-  // Use a more generic filename that matches backend expectations
-  formData.append('file', audioBlob, 'audio.webm');
+  const ext = audioBlob.type.includes('mp4')
+    ? 'm4a'
+    : audioBlob.type.includes('ogg')
+      ? 'ogg'
+      : 'webm';
+  formData.append('file', audioBlob, `audio.${ext}`);
 
-  return request('/api/v1/api/v1/stt/tajik/', {
+  const res = await request<unknown>('/api/v1/stt/tajik/', {
     method: 'POST',
     data: formData,
     requestType: 'form',
     timeout: 600000,
+    getResponse: true,
   });
+  const payload = (res as { data?: { text?: string } }).data ?? res;
+  const text =
+    typeof (payload as { text?: string })?.text === 'string'
+      ? (payload as { text: string }).text.trim()
+      : '';
+  return { text };
 }
 
 // /
@@ -65,9 +76,32 @@ export async function transcribeAudio(audioBlob: Blob): Promise<{ text: string }
 //  * @param question - User's question
 //  * @returns response with the answer
 //  */
-export async function askQuestion(question: string): Promise<{ answer: string }> {
-  return request(`/api/v1/rag/query?question=${encodeURIComponent(question)}`, {
+export type ChatReplyLanguage = 'en-US' | 'ru-RU' | 'tj-TJ';
+
+function replyLangParam(ui: ChatReplyLanguage | undefined): string {
+  if (ui === 'ru-RU') return 'ru';
+  if (ui === 'tj-TJ') return 'tg';
+  if (ui === 'en-US') return 'en';
+  return 'auto';
+}
+
+export async function askQuestion(params: {
+  /** Full prompt for the model (may include recent chat turns). */
+  question: string;
+  /** Short text for embedding search only — omit noise from chat prefixes. */
+  retrievalQuery: string;
+  replyLanguage?: ChatReplyLanguage;
+}): Promise<{ answer: string }> {
+  const rl = replyLangParam(params.replyLanguage);
+  // Query string so reply language survives proxies/clients that alter JSON bodies
+  const qs = `reply_language=${encodeURIComponent(rl)}`;
+  return request(`/api/v1/rag/query?${qs}`, {
     method: 'POST',
+    data: {
+      question: params.question,
+      retrieval_query: params.retrievalQuery,
+      reply_language: rl,
+    },
     timeout: 600000,
   });
 }
